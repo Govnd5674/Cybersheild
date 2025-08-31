@@ -1,0 +1,12 @@
+streamlit
+pandas
+tweepy
+networkx
+graphviz
+plotly
+requests
+beautifulsoup4
+lxml
+google-api-python-client
+praw
+warnings
