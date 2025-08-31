@@ -21,9 +21,6 @@ def get_news_articles_df(keywords, max_results=50):
     all_records = []
     seen_links = set()
 
-    # --- OPTIMIZATION ---
-    # Combine all keywords into one efficient search query instead of looping.
-    # This reduces multiple network requests to a single one.
     if not keywords:
         return pd.DataFrame()
         
@@ -64,9 +61,6 @@ def get_news_articles_df(keywords, max_results=50):
         return pd.DataFrame()
 
     if not all_records:
-        print("No news articles found for the combined query.")
         return pd.DataFrame()
         
     return pd.DataFrame(all_records)
-
-

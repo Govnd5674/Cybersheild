@@ -3,54 +3,46 @@ import pandas as pd
 import praw
 from googleapiclient.discovery import build
 from datetime import datetime
+import streamlit as st
+import time
 
-# --- CREDENTIALS (FROM YOUR INPUT) ---
-# Twitter API Credentials
-TWITTER_API_KEY = "9cmmEfuTupk9QKlhvkWUWU7xe"
-TWITTER_API_SECRET = "ZhvlR11UUaLekGgwZ0qplulX4o2jb9Tj4Hs2sUBMfDUP6xKwtl"
-TWITTER_ACCESS_TOKEN = "1368203703732248579-lAKxRvwtW4WPW8Tc9dxy9Vqus5pn9t"
-TWITTER_ACCESS_SECRET = "JKs6nv7UcFnu4qXvJjNZgxeHWLlgKxAaDQh70DX5EqPE5"
-TWITTER_BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAALsQ3wEAAAAAUXph5Lp9IgndkKCJ1Qe%2FM3psotE%3DM9R9LKS5hKCck2K4lPbuWNlJc5zmgUPt5s13k4HgO8cOEIu0xx"
 
-# Reddit API Credentials
-REDDIT_CLIENT_ID = "qmSrf7HH5NlGuJ1DSiVxEg"
-REDDIT_CLIENT_SECRET = "fQm-DAEqTUFZ7KasmoP90xtaQgC04w"
-REDDIT_USER_AGENT = "myredditapp by u/govindchudari"
-
-# YouTube API Credentials
-YOUTUBE_API_KEY = "AIzaSyCa_SH2jtrhcRxZnOdmG2gYIs3EkK38b00"
-
-# --- CLIENT INITIALIZATION ---
+# Initialize Twitter Client
 try:
     twitter_client = tweepy.Client(
-        consumer_key=TWITTER_API_KEY,
-        consumer_secret=TWITTER_API_SECRET,
-        access_token=TWITTER_ACCESS_TOKEN,
-        access_token_secret=TWITTER_ACCESS_SECRET,
-        bearer_token=TWITTER_BEARER_TOKEN,
+        bearer_token=st.secrets["twitter"]["bearer_token"],
+        consumer_key=st.secrets["twitter"]["api_key"],
+        consumer_secret=st.secrets["twitter"]["api_secret"],
+        access_token=st.secrets["twitter"]["access_token"],
+        access_token_secret=st.secrets["twitter"]["access_secret"],
         wait_on_rate_limit=True
     )
 except Exception as e:
+    st.error("Could not initialize Twitter client. Please check your credentials in secrets.toml.")
     twitter_client = None
 
+# Initialize Reddit Client
 try:
     reddit_client = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent=REDDIT_USER_AGENT
+        client_id=st.secrets["reddit"]["client_id"],
+        client_secret=st.secrets["reddit"]["client_secret"],
+        user_agent=st.secrets["reddit"]["user_agent"]
     )
 except Exception as e:
+    st.error("Could not initialize Reddit client. Please check your credentials in secrets.toml.")
     reddit_client = None
 
+# Initialize YouTube Client
 try:
-    youtube_client = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    youtube_client = build('youtube', 'v3', developerKey=st.secrets["youtube"]["api_key"])
 except Exception as e:
+    st.error("Could not initialize YouTube client. Please check your credentials in secrets.toml.")
     youtube_client = None
 
 # --- TWITTER DATA FETCHER ---
 def get_tweets_df(query, max_results=100):
     if not twitter_client:
-        print("Twitter client not initialized.")
+        st.warning("Twitter client is not available due to initialization error.")
         return pd.DataFrame()
     try:
         response = twitter_client.search_recent_tweets(
@@ -60,6 +52,7 @@ def get_tweets_df(query, max_results=100):
             user_fields=['username', 'public_metrics', 'created_at', 'verified'],
             expansions=['author_id']
         )
+        # Handle case where there is no data
         if not response.data: return pd.DataFrame()
 
         users = {user.id: user for user in response.includes['users']}
@@ -78,17 +71,21 @@ def get_tweets_df(query, max_results=100):
         df = pd.DataFrame(records)
         df['engagement'] = df['retweet_count'] + df['like_count']
         return df.sort_values('engagement', ascending=False)
+    except tweepy.errors.TooManyRequests:
+        st.error("Twitter Rate Limit Exceeded. Please wait 15 minutes before trying again.")
+        return pd.DataFrame()
     except Exception as e:
-        print(f"An error occurred while fetching tweets: {str(e)}")
+        st.error(f"An error occurred while fetching tweets: {str(e)}")
         return pd.DataFrame()
 
 # --- REDDIT DATA FETCHER ---
 def get_reddit_posts_df(subreddit_name, query, limit=50):
     if not reddit_client:
-        print("Reddit client not initialized.")
+        st.warning("Reddit client is not available due to initialization error.")
         return pd.DataFrame()
     try:
         subreddit = reddit_client.subreddit(subreddit_name)
+        # PRAW handles rate limits automatically, so we just need a generic catch
         records = [{
             'title': post.title, 'author': post.author.name if post.author else '[deleted]',
             'score': post.score, 'num_comments': post.num_comments, 'url': post.url,
@@ -101,13 +98,13 @@ def get_reddit_posts_df(subreddit_name, query, limit=50):
         df['engagement'] = df['score'] + df['num_comments']
         return df.sort_values('engagement', ascending=False)
     except Exception as e:
-        print(f"Error fetching Reddit posts: {e}")
+        st.error(f"Error fetching Reddit posts: {e}")
         return pd.DataFrame()
 
 # --- YOUTUBE DATA FETCHER ---
 def get_youtube_videos_df(query, max_results=25):
     if not youtube_client:
-        print("YouTube client not initialized.")
+        st.warning("YouTube client is not available due to initialization error.")
         return pd.DataFrame()
     try:
         search_response = youtube_client.search().list(q=query, part='snippet', maxResults=max_results, type='video').execute()
@@ -131,10 +128,5 @@ def get_youtube_videos_df(query, max_results=25):
         df['text_content'] = df['title'] + " " + df['description']
         return df.sort_values('engagement', ascending=False)
     except Exception as e:
-        print(f"Error fetching YouTube videos: {e}")
+        st.error(f"Error fetching YouTube videos: {e}")
         return pd.DataFrame()
-
-# --- END OF SCRIPT ---
-# Developed by Govind Choudhary for Project Sentry
-# This script is part of a system to detect and analyze anti-India campaigns.
-
